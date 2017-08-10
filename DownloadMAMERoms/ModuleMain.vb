@@ -55,21 +55,35 @@ Module MainModule
     End Sub
 
     Private Sub ShowUsage(Optional errorMessage As String = "")
+        Console.ForegroundColor = ConsoleColor.White
         Console.WriteLine("Download MAME ROMs v" + My.Application.Info.Version.ToString())
+        Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine()
 
         If errorMessage <> "" Then
+            Console.ForegroundColor = ConsoleColor.Red
             Console.WriteLine("ERROR: " + errorMessage)
+            Console.ForegroundColor = ConsoleColor.Gray
             Console.WriteLine()
         End If
+
+        Console.ForegroundColor = ConsoleColor.White
         Console.WriteLine("    Usage:")
-        Console.WriteLine("    DownloadMAMERoms [Sections] DestinationFolder")
+        Console.ForegroundColor = ConsoleColor.Gray
+        Console.WriteLine("    dmr [Sections] DestinationFolder")
         Console.WriteLine()
-        Console.WriteLine("    Example:")
+        Console.ForegroundColor = ConsoleColor.White
+        Console.WriteLine("    Examples:")
+        Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine("     1) Download all to c:\mame\roms")
-        Console.WriteLine("    DownloadMAMERoms c:\mame\roms")
+        Console.ForegroundColor = ConsoleColor.Green
+        Console.WriteLine("    dmr c:\mame\roms")
+        Console.ForegroundColor = ConsoleColor.Gray
+        Console.WriteLine()
         Console.WriteLine("     2) Download roms from sections 'Numbers', 'F' and 'G' to e:\emulators\mame\roms")
-        Console.WriteLine("    DownloadMAMERoms #FG c:\emulators\mame\roms")
+        Console.ForegroundColor = ConsoleColor.Green
+        Console.WriteLine("    dmr #FG c:\emulators\mame\roms")
+        Console.ForegroundColor = ConsoleColor.Gray
     End Sub
 
     Private Sub PrintHeader(txt As String)
