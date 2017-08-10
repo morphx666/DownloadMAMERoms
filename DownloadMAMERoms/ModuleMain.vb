@@ -67,22 +67,22 @@ Module MainModule
             Console.WriteLine()
         End If
 
-        Console.ForegroundColor = ConsoleColor.White
+        Console.ForegroundColor = ConsoleColor.Cyan
         Console.WriteLine("    Usage:")
         Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine("    dmr [Sections] DestinationFolder")
         Console.WriteLine()
-        Console.ForegroundColor = ConsoleColor.White
+        Console.ForegroundColor = ConsoleColor.Cyan
         Console.WriteLine("    Examples:")
         Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine("     1) Download all to c:\mame\roms")
         Console.ForegroundColor = ConsoleColor.Green
-        Console.WriteLine("    dmr c:\mame\roms")
+        Console.WriteLine("        dmr c:\mame\roms")
         Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine()
         Console.WriteLine("     2) Download roms from sections 'Numbers', 'F' and 'G' to e:\emulators\mame\roms")
         Console.ForegroundColor = ConsoleColor.Green
-        Console.WriteLine("    dmr #FG c:\emulators\mame\roms")
+        Console.WriteLine("        dmr #FG c:\emulators\mame\roms")
         Console.ForegroundColor = ConsoleColor.Gray
     End Sub
 
@@ -176,7 +176,7 @@ Module MainModule
                         If ex.InnerException IsNot Nothing Then Debug.WriteLine(ex.InnerException.Message)
                         Console.ForegroundColor = ConsoleColor.Gray
 
-                        Thread.Sleep(3000)
+                        Thread.Sleep(2000)
                     End SyncLock
                 End Try
 
@@ -212,7 +212,7 @@ Module MainModule
                     Console.CursorLeft = 0
                     Console.CursorTop = 1
                 End SyncLock
-                waitEvent.WaitOne(100)
+                waitEvent.WaitOne(50)
             Loop Until dstFile = ""
 
             waitEvent.Set()
