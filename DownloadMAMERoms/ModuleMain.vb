@@ -12,6 +12,7 @@ Module MainModule
     Private waitEvent As AutoResetEvent = New AutoResetEvent(False)
     Private dlRom As ROM
     Private userSections As New List(Of String)
+    Private filter As String
     Private sw As New Stopwatch()
     Private syncObj As New Object()
     Private abortThreads As Boolean
@@ -25,20 +26,24 @@ Module MainModule
     Sub Main(args() As String)
         Console.Title = "Download MAME ROMs"
 
-        If args.Length < 1 OrElse args.Length > 2 Then
+        If args.Length < 1 Then
             ShowUsage()
         Else
-            If args.Length = 1 Then
-                dstFolder = args(0)
-            Else
-                For i As Integer = 0 To args(0).Length - 1
-                    userSections.Add(args(0)(i))
-                Next
-                dstFolder = args(1)
-            End If
+            For i As Integer = 0 To args.Length - 1 Step 2
+                Select Case args(i).ToLower()
+                    Case "/s"
+                        For k As Integer = 0 To args(i + 1).Length - 1
+                            userSections.Add(args(i + 1)(k))
+                        Next
+                    Case "/f"
+                        filter = args(i + 1).ToLower()
+                    Case "/d"
+                        dstFolder = args(i + 1)
+                End Select
+            Next
 
             If Not IO.Directory.Exists(dstFolder) Then
-                ShowUsage("Invalid destination folder.")
+                ShowUsage($"Invalid destination folder: '{dstFolder}'")
                 Exit Sub
             End If
 
@@ -70,20 +75,36 @@ Module MainModule
         Console.ForegroundColor = ConsoleColor.Cyan
         Console.WriteLine("    Usage:")
         Console.ForegroundColor = ConsoleColor.Gray
-        Console.WriteLine("    dmr [Sections] DestinationFolder")
+
+        Console.WriteLine("    dmr [/s] [/f] /d")
         Console.WriteLine()
+        Console.WriteLine("    /s{0}Sections", vbTab)
+        Console.WriteLine("    /f{0}Filter", vbTab)
+        Console.WriteLine("    /d{0}Destination folder", vbTab)
+        Console.WriteLine()
+
         Console.ForegroundColor = ConsoleColor.Cyan
         Console.WriteLine("    Examples:")
+
         Console.ForegroundColor = ConsoleColor.Gray
-        Console.WriteLine("     1) Download all to c:\mame\roms")
+        Console.WriteLine("     1) Download all roms to c:\mame\roms")
         Console.ForegroundColor = ConsoleColor.Green
-        Console.WriteLine("        dmr c:\mame\roms")
+        Console.WriteLine("        dmr /d c:\mame\roms")
+
         Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine()
-        Console.WriteLine("     2) Download roms from sections 'Numbers', 'F' and 'G' to e:\emulators\mame\roms")
+        Console.WriteLine("     2) Download roms from sections 'Numbers', 'F' and 'G' to c:\emulators\mame\roms")
         Console.ForegroundColor = ConsoleColor.Green
-        Console.WriteLine("        dmr #FG c:\emulators\mame\roms")
+        Console.WriteLine("        dmr /s #FG /d c:\emulators\mame\roms")
+
         Console.ForegroundColor = ConsoleColor.Gray
+        Console.WriteLine()
+        Console.WriteLine("     3) Download all roms from section 'G', containing the word 'galaga' to c:\emulators\mame\roms")
+        Console.ForegroundColor = ConsoleColor.Green
+        Console.WriteLine("        dmr /s G /f galaga /d c:\emulators\mame\roms")
+
+        Console.ForegroundColor = ConsoleColor.Gray
+        Console.WriteLine()
     End Sub
 
     Private Sub PrintHeader(txt As String)
@@ -118,7 +139,7 @@ Module MainModule
         Dim sections As New List(Of String)
         If userSections.Count = 0 OrElse userSections.Contains("#") Then sections.Add("#")
         For i = Asc("A") To Asc("Z")
-            If userSections.Count = 0 OrElse userSections.Contains(Chr(i)) Then sections.Add(Chr(i))
+            If userSections.Count = 0 OrElse userSections.Contains(Char.ConvertFromUtf32(i)) Then sections.Add(Char.ConvertFromUtf32(i))
         Next
 
         Console.CursorVisible = False
@@ -281,10 +302,10 @@ Module MainModule
         Dim romList As New List(Of ROM)
         Dim htmlDoc As New HtmlDocument()
         Try
-            htmlDoc.LoadHtml(httpClient.DownloadString(CombinePath(baseURL, String.Format("/M.A.M.E._-_Multiple_Arcade_Machine_Emulator_ROMs/Games-Starting-With-{0}/7", If(initial = "#", "Numbers", initial)))))
+            htmlDoc.LoadHtml(httpClient.DownloadString(CombinePath(baseURL, $"/M.A.M.E._-_Multiple_Arcade_Machine_Emulator_ROMs/Games-Starting-With-{If(initial = "#", "Numbers", initial)}/7")))
         Catch ex As Exception
             Console.CursorTop = 1
-            Console.WriteLine("Section '{0}' Error: {1}", initial, ex.Message)
+            Console.WriteLine($"Section '{initial}' Error: {ex.Message}")
             Thread.Sleep(500)
             Return romList
         End Try
@@ -292,12 +313,13 @@ Module MainModule
         Dim lastTxt As String = ""
         Dim entries = htmlDoc.DocumentNode.SelectNodes("//a[@class='index gamelist']")
         Dim RomsReady = Function() romList.Where(Function(r) r.State <> ROM.States.Downloading).Count
-        Dim PrintStatus = Sub()
+        Dim PrintStatus = Sub(i As Integer)
                               Dim rr As Integer = RomsReady()
-                              Dim txt As String = String.Format("Preparing ROMs list [{0}% | {1:N0} ROMs | {2}]".PadRight(Console.WindowWidth - 1, " "),
+                              Dim txt As String = String.Format("Preparing ROMs list [{3}:{0}% | {1:N0} ROMs | {2}]".PadRight(Console.WindowWidth - 1, " "),
                                                 (rr / entries.Count * 100).ToString("N0").PadLeft(3),
                                                 rr,
-                                                FormatFileSize(romList.Sum(Function(r) r.Size)))
+                                                FormatFileSize(romList.Sum(Function(r) r.Size)),
+                                                i.ToString("N0").PadLeft(5))
                               If lastTxt <> txt Then
                                   Console.CursorTop = 1
                                   Console.CursorLeft = 0
@@ -306,17 +328,21 @@ Module MainModule
                               End If
                           End Sub
 
-        PrintStatus()
+        PrintStatus(0)
         For i As Integer = 0 To entries.Count - 1
-            romList.Add(New ROM(entries(i).InnerText, CombinePath(baseURL, entries(i).GetAttributeValue("href", ""))))
+            If filter = "" OrElse entries(i).InnerText.ToLower().Contains(filter) Then
+                romList.Add(New ROM(entries(i).InnerText, CombinePath(baseURL, entries(i).GetAttributeValue("href", ""))))
 
-            If romList.Count < entries.Count Then
-                If i Mod maxConnections = 0 Then
-                    Do
-                        Thread.Sleep(10)
-                        PrintStatus()
-                    Loop While RomsReady() < i
+                If romList.Count < entries.Count Then
+                    If i Mod maxConnections = 0 Then
+                        Do
+                            Thread.Sleep(10)
+                            PrintStatus(i)
+                        Loop While RomsReady() < romList.Count
+                    End If
                 End If
+            Else
+                PrintStatus(i)
             End If
         Next
 
