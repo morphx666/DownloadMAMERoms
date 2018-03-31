@@ -1,8 +1,6 @@
 # DownloadMAMERoms
 Downloader for MAME ROMS
 
-Download MAME ROMs v2018.3.31.73
-
     Usage:
     dmr [/s] [/f] [/r] /d
 
