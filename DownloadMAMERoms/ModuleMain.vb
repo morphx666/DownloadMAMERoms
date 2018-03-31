@@ -4,18 +4,23 @@ Imports HtmlAgilityPack
 
 Module MainModule
     ' \\Media-center\d\Emulators\mame\roms
+    Private Class ProgramSettings
+        Public Property DestinationFolder As String
+        Public Property UserSections As New List(Of String)
+        Public Property Filter As String
+        Public Property ForceRedownload As Boolean
+    End Class
+
     Private files() As String
-    Private dstFolder As String
     Private dstFile As String
     Private romsList As New Dictionary(Of Char, List(Of ROM))
     Private httpClient As New WebClient()
     Private waitEvent As AutoResetEvent = New AutoResetEvent(False)
     Private dlRom As ROM
-    Private userSections As New List(Of String)
-    Private filter As String
     Private sw As New Stopwatch()
     Private syncObj As New Object()
     Private abortThreads As Boolean
+    Private settings As New ProgramSettings()
 
     ' http://www.emuparadise.me/roms/get-download.php?gid=10944&token=fe1cbde50e0d9859193c2fbb06944a3c&mirror_available=true
     ' http://50.7.136.26/happyxhJ1ACmlTrxJQpol71nBc/MAME/roms/88games.zip
@@ -33,17 +38,23 @@ Module MainModule
                 Select Case args(i).ToLower()
                     Case "/s"
                         For k As Integer = 0 To args(i + 1).Length - 1
-                            userSections.Add(args(i + 1)(k))
+                            settings.UserSections.Add(args(i + 1)(k))
                         Next
                     Case "/f"
-                        filter = args(i + 1).ToLower()
+                        settings.Filter = args(i + 1).ToLower()
                     Case "/d"
-                        dstFolder = args(i + 1)
+                        settings.DestinationFolder = args(i + 1)
+                    Case "/r"
+                        settings.ForceRedownload = True
+                        i -= 1
+                    Case Else
+                        ShowUsage($"Unknown command line option: '{args(i)}'")
+                        Exit Sub
                 End Select
             Next
 
-            If Not IO.Directory.Exists(dstFolder) Then
-                ShowUsage($"Invalid destination folder: '{dstFolder}'")
+            If Not IO.Directory.Exists(settings.DestinationFolder) Then
+                ShowUsage($"Invalid destination folder: '{settings.DestinationFolder}'")
                 Exit Sub
             End If
 
@@ -76,11 +87,12 @@ Module MainModule
         Console.WriteLine("    Usage:")
         Console.ForegroundColor = ConsoleColor.Gray
 
-        Console.WriteLine("    dmr [/s] [/f] /d")
+        Console.WriteLine("    dmr [/s] [/f] [/r] /d")
         Console.WriteLine()
-        Console.WriteLine("    /s{0}Sections", vbTab)
-        Console.WriteLine("    /f{0}Filter", vbTab)
-        Console.WriteLine("    /d{0}Destination folder", vbTab)
+        Console.WriteLine("    /s{0}Sections: A sequence of letters and or numbers indicating the ROMs sections to scan", vbTab)
+        Console.WriteLine("    /f{0}Filter: One or more words to filter the ROMs names to download", vbTab)
+        Console.WriteLine("    /r{0}Download all ROMs even if they already exist", vbTab)
+        Console.WriteLine("    /d{0}Destination folder: Specifies the folder where the ROMs will be downloaded", vbTab)
         Console.WriteLine()
 
         Console.ForegroundColor = ConsoleColor.Cyan
@@ -137,18 +149,18 @@ Module MainModule
                         End Sub
 
         Dim sections As New List(Of String)
-        If userSections.Count = 0 OrElse userSections.Contains("#") Then sections.Add("#")
+        If settings.UserSections.Count = 0 OrElse settings.UserSections.Contains("#") Then sections.Add("#")
         For i = Asc("A") To Asc("Z")
-            If userSections.Count = 0 OrElse userSections.Contains(Char.ConvertFromUtf32(i)) Then sections.Add(Char.ConvertFromUtf32(i))
+            If settings.UserSections.Count = 0 OrElse settings.UserSections.Contains(Char.ConvertFromUtf32(i)) Then sections.Add(Char.ConvertFromUtf32(i))
         Next
 
         Console.CursorVisible = False
 
         For Each section In sections
-            If userSections.Count > 0 AndAlso Not userSections.Contains(section) Then Continue For
+            If settings.UserSections.Count > 0 AndAlso Not settings.UserSections.Contains(section) Then Continue For
             Dim romsList = GetROMsList(section).Where(Function(r) r.DownloadURL <> "" AndAlso r.State = ROM.States.Ready)
 
-            PrintHeader($"ROMs for section '{section}'")
+            PrintHeader($"ROMs for section '{section}'{If(settings.Filter <> "", $" with filter '{settings.Filter}'", "")}")
 
             Dim n As Integer = 0
             For Each rom In romsList
@@ -164,25 +176,26 @@ Module MainModule
 
                     ClearLine()
 
-                    If IO.File.Exists(dstFile) AndAlso SizeIsEqual(My.Computer.FileSystem.GetFileInfo(dstFile).Length, rom.Size) Then
+                    SyncLock syncObj
+                        Console.WriteLine("Downloading [{0}%]: {1}", (n / romsList.Count * 100).ToString("N0").PadLeft(3),
+                                  rom.Title.Substring(0, Math.Min(rom.Title.Length, Console.WindowWidth - 30 - 20 - 1)))
+                    End SyncLock
+
+                    If Not settings.ForceRedownload AndAlso IO.File.Exists(dstFile) AndAlso SizeIsEqual(My.Computer.FileSystem.GetFileInfo(dstFile).Length, rom.Size) Then
                         SyncLock syncObj
                             Console.ForegroundColor = ConsoleColor.Green
-                            Console.Write("Skipped    ")
+                            Console.Write("Skipped           ")
                             Console.ForegroundColor = ConsoleColor.Gray
-                            Thread.Sleep(250)
+                            Thread.Sleep(500)
                         End SyncLock
                     ElseIf rom.Size = 0 Then
                         SyncLock syncObj
                             Console.ForegroundColor = ConsoleColor.DarkYellow
-                            Console.Write("Invalid    ")
+                            Console.Write("Invalid           ")
                             Console.ForegroundColor = ConsoleColor.Gray
-                            Thread.Sleep(250)
+                            Thread.Sleep(500)
                         End SyncLock
                     Else
-                        SyncLock syncObj
-                            Console.WriteLine("Downloading [{0}%]: {1}", (n / romsList.Count * 100).ToString("N0").PadLeft(3),
-                                  rom.Title.Substring(0, Math.Min(rom.Title.Length, Console.WindowWidth - 30 - 20 - 1)))
-                        End SyncLock
                         sw.Restart()
                         httpClient.DownloadFile("http://50.7.161.234/998ajxYxajs13jAKhdca/MAME/roms/" + rom.DownloadURL + ".zip", dstFile)
                     End If
@@ -214,7 +227,7 @@ Module MainModule
     End Sub
 
     Private Function GetDestinationFileName(rom As ROM) As String
-        Return IO.Path.Combine(dstFolder, rom.DownloadURL + ".Zip")
+        Return IO.Path.Combine(settings.DestinationFolder, rom.DownloadURL + ".Zip")
     End Function
 
     Private Sub MonitorSub()
@@ -330,7 +343,7 @@ Module MainModule
 
         PrintStatus(0)
         For i As Integer = 0 To entries.Count - 1
-            If filter = "" OrElse entries(i).InnerText.ToLower().Contains(filter) Then
+            If settings.Filter = "" OrElse entries(i).InnerText.ToLower().Contains(settings.Filter) Then
                 romList.Add(New ROM(entries(i).InnerText, CombinePath(baseURL, entries(i).GetAttributeValue("href", ""))))
 
                 If romList.Count < entries.Count Then
@@ -343,6 +356,7 @@ Module MainModule
                 End If
             Else
                 PrintStatus(i)
+                Thread.Sleep(1)
             End If
         Next
 
