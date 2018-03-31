@@ -1,14 +1,15 @@
 # DownloadMAMERoms
 Downloader for MAME ROMS
 
-Download MAME ROMs
+Download MAME ROMs v2018.3.31.73
 
     Usage:
-    dmr [/s] [/f] /d
+    dmr [/s] [/f] [/r] /d
 
-    /s  Sections
-    /f  Filter
-    /d  Destination folder
+    /s  Sections: A sequence of letters and or numbers indicating the ROMs sections to scan
+    /f  Filter: One or more words to filter the ROMs names to download
+    /r  Download all ROMs even if they already exist
+    /d  Destination folder: Specifies the folder where the ROMs will be downloaded
 
     Examples:
      1) Download all roms to c:\mame\roms
