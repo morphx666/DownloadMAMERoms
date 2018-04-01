@@ -14,6 +14,7 @@ Module MainModule
         Public Property UserSections As New List(Of String)
         Public Property Filter As String
         Public Property DownloadMode As Modes = Modes.Auto
+        Public Property MaximumConnections As Integer = 10
     End Class
 
     Private files() As String
@@ -55,6 +56,9 @@ Module MainModule
                             Case "missing" : settings.DownloadMode = ProgramSettings.Modes.OnlyMissing
                             Case "all" : settings.DownloadMode = ProgramSettings.Modes.All
                         End Select
+                    Case "/c"
+                        Dim mc As Integer
+                        If Integer.TryParse(args(i + 1), mc) Then settings.MaximumConnections = mc
                     Case Else
                         ShowUsage($"Unknown command line option: '{args(i)}'")
                         Exit Sub
@@ -95,15 +99,17 @@ Module MainModule
         Console.WriteLine("    Usage:")
         Console.ForegroundColor = ConsoleColor.Gray
 
-        Console.WriteLine("    dmr [/s] [/f] [/r auto|missing|all] /d")
+        Console.WriteLine("     dmr [/s] [/f] [/r auto|missing|all] [/c] /d")
         Console.WriteLine()
-        Console.WriteLine("    /s{0}Sections: A sequence of letters and or numbers indicating the ROMs sections to scan", vbTab)
-        Console.WriteLine("    /f{0}Filter: One or more words to filter the ROMs names to download", vbTab)
-        Console.WriteLine("    /r{0}Download mode:", vbTab)
-        Console.WriteLine("    {0}{0}auto:    Download only missing ROMs and ROMs with wrong file sizes", vbTab)
-        Console.WriteLine("    {0}{0}missing: Download only missing ROMs ignoring the ROMs file sizes", vbTab)
-        Console.WriteLine("    {0}{0}all:     Download all available ROMs", vbTab)
-        Console.WriteLine("    /d{0}Destination folder: Specifies the folder where the ROMs will be downloaded", vbTab)
+        Console.WriteLine("     /s{0}Sections: A sequence of letters and or numbers indicating the ROMs sections to scan", vbTab)
+        Console.WriteLine("     /f{0}Filter: One or more words to filter the ROMs names to download", vbTab)
+        Console.WriteLine("     /d{0}Destination folder: Specifies the folder where the ROMs will be downloaded", vbTab)
+        Console.WriteLine("     /r{0}Download mode:", vbTab)
+        Console.WriteLine("     {0}    auto:    Download only missing ROMs and ROMs with wrong file sizes", vbTab)
+        Console.WriteLine("     {0}    missing: Download only missing ROMs ignoring the ROMs file sizes", vbTab)
+        Console.WriteLine("     {0}    all:     Download all available ROMs", vbTab)
+        Console.WriteLine("     /c{0}Connections: Defines the maximum number of simultaneous connections for the scanning process", vbTab)
+
         Console.WriteLine()
 
         Console.ForegroundColor = ConsoleColor.Cyan
@@ -125,6 +131,14 @@ Module MainModule
         Console.WriteLine("     3) Download all roms from section 'G', containing the word 'galaga' to c:\emulators\mame\roms")
         Console.ForegroundColor = ConsoleColor.Green
         Console.WriteLine("        dmr /s G /f galaga /d c:\emulators\mame\roms")
+
+        Console.WriteLine()
+
+        Console.ForegroundColor = ConsoleColor.Cyan
+        Console.WriteLine("    Shortcut Keys:")
+
+        Console.ForegroundColor = ConsoleColor.Gray
+        Console.WriteLine("     ESC: Abort process and terminate")
 
         Console.ForegroundColor = ConsoleColor.Gray
         Console.WriteLine()
@@ -254,14 +268,12 @@ Module MainModule
 
                 sw.Stop()
                 n += 1
+
+                If Console.KeyAvailable AndAlso Console.ReadKey().Key = ConsoleKey.Escape Then AbortProcess(True)
             Next
         Next
 
-        Console.CursorVisible = True
-
-        waitEvent.Set()
-        abortThreads = True
-        httpClient.Dispose()
+        AbortProcess(False)
     End Sub
 
     Private Function GetDestinationFileName(rom As ROM) As String
@@ -349,7 +361,6 @@ Module MainModule
 
         PrintHeader($"Processing section '{initial}' | Mode: {settings.DownloadMode}{If(settings.Filter <> "", $" | Filter: '{settings.Filter}'", "")}")
 
-        Const maxConnections As Integer = 10
         Dim romList As New List(Of ROM)
         Dim htmlDoc As New HtmlDocument()
         Try
@@ -385,7 +396,7 @@ Module MainModule
                 romList.Add(New ROM(entries(i).InnerText, CombinePath(baseURL, entries(i).GetAttributeValue("href", ""))))
 
                 If romList.Count < entries.Count Then
-                    If i Mod maxConnections = 0 Then
+                    If (i Mod settings.MaximumConnections) = 0 Then
                         Do
                             Thread.Sleep(10)
                             PrintStatus(i)
@@ -396,11 +407,25 @@ Module MainModule
                 PrintStatus(i)
                 Thread.Sleep(1)
             End If
+
+            If Console.KeyAvailable AndAlso Console.ReadKey().Key = ConsoleKey.Escape Then AbortProcess(True)
         Next
 
         romsList.Add(initial, romList)
         Return romList
     End Function
+
+    Private Sub AbortProcess(userExit As Boolean)
+        waitEvent.Set()
+        abortThreads = True
+        httpClient.Dispose()
+
+        Console.ForegroundColor = ConsoleColor.Gray
+        Console.CursorVisible = True
+        Console.WriteLine()
+
+        Environment.Exit(0)
+    End Sub
 
     Public Function CombinePath(p1 As String, p2 As String) As String
         If p1.Contains("/") Then
