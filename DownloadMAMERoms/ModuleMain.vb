@@ -50,7 +50,7 @@ Module MainModule
                     Case "/d"
                         settings.DestinationFolder = args(i + 1)
                     Case "/r"
-                        Select Case args(i + 1).ToLower().Substring(0, 1)
+                        Select Case args(i + 1).ToLower()
                             Case "auto" : settings.DownloadMode = ProgramSettings.Modes.Auto
                             Case "missing" : settings.DownloadMode = ProgramSettings.Modes.OnlyMissing
                             Case "all" : settings.DownloadMode = ProgramSettings.Modes.All
