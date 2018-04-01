@@ -2,11 +2,14 @@
 Downloader for MAME ROMS
 
     Usage:
-    dmr [/s] [/f] [/r] /d
+    dmr [/s] [/f] [/r auto|missing|all] /d
 
     /s  Sections: A sequence of letters and or numbers indicating the ROMs sections to scan
     /f  Filter: One or more words to filter the ROMs names to download
-    /r  Download all ROMs even if they already exist
+    /r  Download mode:
+                auto:    Download only missing ROMs and ROMs with wrong file sizes
+                missing: Download only missing ROMs ignoring the ROMs file sizes
+                all:     Download all available ROMs
     /d  Destination folder: Specifies the folder where the ROMs will be downloaded
 
     Examples:

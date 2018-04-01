@@ -5,10 +5,15 @@ Imports HtmlAgilityPack
 Module MainModule
     ' \\Media-center\d\Emulators\mame\roms
     Private Class ProgramSettings
+        Public Enum Modes
+            Auto
+            OnlyMissing
+            All
+        End Enum
         Public Property DestinationFolder As String
         Public Property UserSections As New List(Of String)
         Public Property Filter As String
-        Public Property ForceRedownload As Boolean
+        Public Property DownloadMode As Modes = Modes.Auto
     End Class
 
     Private files() As String
@@ -45,8 +50,11 @@ Module MainModule
                     Case "/d"
                         settings.DestinationFolder = args(i + 1)
                     Case "/r"
-                        settings.ForceRedownload = True
-                        i -= 1
+                        Select Case args(i + 1).ToLower().Substring(0, 1)
+                            Case "auto" : settings.DownloadMode = ProgramSettings.Modes.Auto
+                            Case "missing" : settings.DownloadMode = ProgramSettings.Modes.OnlyMissing
+                            Case "all" : settings.DownloadMode = ProgramSettings.Modes.All
+                        End Select
                     Case Else
                         ShowUsage($"Unknown command line option: '{args(i)}'")
                         Exit Sub
@@ -87,11 +95,14 @@ Module MainModule
         Console.WriteLine("    Usage:")
         Console.ForegroundColor = ConsoleColor.Gray
 
-        Console.WriteLine("    dmr [/s] [/f] [/r] /d")
+        Console.WriteLine("    dmr [/s] [/f] [/r auto|missing|all] /d")
         Console.WriteLine()
         Console.WriteLine("    /s{0}Sections: A sequence of letters and or numbers indicating the ROMs sections to scan", vbTab)
         Console.WriteLine("    /f{0}Filter: One or more words to filter the ROMs names to download", vbTab)
-        Console.WriteLine("    /r{0}Download all ROMs even if they already exist", vbTab)
+        Console.WriteLine("    /r{0}Download mode:", vbTab)
+        Console.WriteLine("    {0}{0}auto:    Download only missing ROMs and ROMs with wrong file sizes", vbTab)
+        Console.WriteLine("    {0}{0}missing: Download only missing ROMs ignoring the ROMs file sizes", vbTab)
+        Console.WriteLine("    {0}{0}all:     Download all available ROMs", vbTab)
         Console.WriteLine("    /d{0}Destination folder: Specifies the folder where the ROMs will be downloaded", vbTab)
         Console.WriteLine()
 
@@ -140,19 +151,26 @@ Module MainModule
                               End If
                           End Function
 
-        Dim ClearLine = Sub()
-                            Console.CursorLeft = 0
-                            Console.CursorTop = 1
-                            Console.Write(blankLine)
-                            Console.CursorLeft = 0
-                            Console.CursorTop = 1
-                        End Sub
+        Dim ClearLines = Sub(lines As Integer)
+                             For i As Integer = 1 To lines
+                                 Console.SetCursorPosition(0, i)
+                                 Console.Write(blankLine)
+                             Next
+                             Console.SetCursorPosition(0, 1)
+                         End Sub
 
         Dim sections As New List(Of String)
-        If settings.UserSections.Count = 0 OrElse settings.UserSections.Contains("#") Then sections.Add("#")
-        For i = Asc("A") To Asc("Z")
-            If settings.UserSections.Count = 0 OrElse settings.UserSections.Contains(Char.ConvertFromUtf32(i)) Then sections.Add(Char.ConvertFromUtf32(i))
-        Next
+        If settings.UserSections.Count = 0 Then
+            sections.Add("#")
+            For i = Asc("A") To Asc("Z")
+                sections.Add(Char.ConvertFromUtf32(i))
+            Next
+        Else
+            If settings.UserSections.Contains("#") Then sections.Add("#")
+            For i = Asc("A") To Asc("Z")
+                If settings.UserSections.Count = 0 OrElse settings.UserSections.Contains(Char.ConvertFromUtf32(i)) Then sections.Add(Char.ConvertFromUtf32(i))
+            Next
+        End If
 
         Console.CursorVisible = False
 
@@ -160,7 +178,7 @@ Module MainModule
             If settings.UserSections.Count > 0 AndAlso Not settings.UserSections.Contains(section) Then Continue For
             Dim romsList = GetROMsList(section).Where(Function(r) r.DownloadURL <> "" AndAlso r.State = ROM.States.Ready)
 
-            PrintHeader($"ROMs for section '{section}'{If(settings.Filter <> "", $" with filter '{settings.Filter}'", "")}")
+            PrintHeader($"ROMs for section '{section}' | Mode: {settings.DownloadMode}{If(settings.Filter <> "", $" | Filter: '{settings.Filter}'", "")}")
 
             Dim n As Integer = 0
             For Each rom In romsList
@@ -174,26 +192,38 @@ Module MainModule
                     dlRom = rom
                     waitEvent.Set()
 
-                    ClearLine()
+                    ClearLines(1)
 
                     SyncLock syncObj
                         Console.WriteLine("Downloading [{0}%]: {1}", (n / romsList.Count * 100).ToString("N0").PadLeft(3),
                                   rom.Title.Substring(0, Math.Min(rom.Title.Length, Console.WindowWidth - 30 - 20 - 1)))
                     End SyncLock
 
-                    If Not settings.ForceRedownload AndAlso IO.File.Exists(dstFile) AndAlso SizeIsEqual(My.Computer.FileSystem.GetFileInfo(dstFile).Length, rom.Size) Then
+                    Dim downloadRom As Boolean
+                    Dim romExists As Boolean = IO.File.Exists(dstFile)
+                    Dim hasSameSize As Boolean = If(romExists, SizeIsEqual(My.Computer.FileSystem.GetFileInfo(dstFile).Length, rom.Size), False)
+
+                    Select Case settings.DownloadMode
+                        Case ProgramSettings.Modes.All : downloadRom = True
+                        Case ProgramSettings.Modes.OnlyMissing : downloadRom = Not romExists
+                        Case ProgramSettings.Modes.Auto : downloadRom = Not romExists AndAlso Not hasSameSize
+                    End Select
+
+                    If Not downloadRom Then
                         SyncLock syncObj
+                            Console.SetCursorPosition(0, 1)
                             Console.ForegroundColor = ConsoleColor.Green
-                            Console.Write("Skipped           ")
+                            Console.Write("Skipped".PadRight(18))
                             Console.ForegroundColor = ConsoleColor.Gray
-                            Thread.Sleep(500)
+                            Thread.Sleep(50)
                         End SyncLock
                     ElseIf rom.Size = 0 Then
                         SyncLock syncObj
+                            Console.SetCursorPosition(0, 1)
                             Console.ForegroundColor = ConsoleColor.DarkYellow
-                            Console.Write("Invalid           ")
+                            Console.Write("Invalid".PadRight(18))
                             Console.ForegroundColor = ConsoleColor.Gray
-                            Thread.Sleep(500)
+                            Thread.Sleep(250)
                         End SyncLock
                     Else
                         sw.Restart()
@@ -203,14 +233,22 @@ Module MainModule
                     waitEvent.WaitOne()
                 Catch ex As Exception
                     SyncLock syncObj
-                        ClearLine()
+                        Dim errMsg As String = ex.Message
+                        If errMsg.Length > Console.WindowWidth Then errMsg = errMsg.Substring(0, Console.WindowWidth - 1)
 
                         Console.ForegroundColor = ConsoleColor.Red
-                        Console.WriteLine($"Download Error: {rom.Title} -> {ex.Message}")
-                        If ex.InnerException IsNot Nothing Then Debug.WriteLine(ex.InnerException.Message)
+                        Console.SetCursorPosition(0, 1)
+                        Console.Write("Download Error".PadRight(18))
+
+                        Console.ForegroundColor = ConsoleColor.Magenta
+                        Console.SetCursorPosition(0, 2)
+                        Console.WriteLine(errMsg)
                         Console.ForegroundColor = ConsoleColor.Gray
 
-                        Thread.Sleep(2000)
+                        If ex.InnerException IsNot Nothing Then Debug.WriteLine(ex.InnerException.Message)
+
+                        Thread.Sleep(1000)
+                        ClearLines(2)
                     End SyncLock
                 End Try
 
@@ -309,7 +347,7 @@ Module MainModule
     Private Function GetROMsList(initial As String) As List(Of ROM)
         If romsList.ContainsKey(initial) Then Return romsList(initial)
 
-        PrintHeader(String.Format("Processing section '{0}'", initial))
+        PrintHeader($"Processing section '{initial}' | Mode: {settings.DownloadMode}{If(settings.Filter <> "", $" | Filter: '{settings.Filter}'", "")}")
 
         Const maxConnections As Integer = 10
         Dim romList As New List(Of ROM)
