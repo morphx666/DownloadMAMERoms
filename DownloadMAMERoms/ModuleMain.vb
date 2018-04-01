@@ -269,7 +269,7 @@ Module MainModule
                 sw.Stop()
                 n += 1
 
-                If Console.KeyAvailable AndAlso Console.ReadKey().Key = ConsoleKey.Escape Then AbortProcess(True)
+                If Console.KeyAvailable AndAlso Console.ReadKey(True).Key = ConsoleKey.Escape Then AbortProcess(True)
             Next
         Next
 
@@ -408,7 +408,7 @@ Module MainModule
                 Thread.Sleep(1)
             End If
 
-            If Console.KeyAvailable AndAlso Console.ReadKey().Key = ConsoleKey.Escape Then AbortProcess(True)
+            If Console.KeyAvailable AndAlso Console.ReadKey(True).Key = ConsoleKey.Escape Then AbortProcess(True)
         Next
 
         romsList.Add(initial, romList)
@@ -419,6 +419,15 @@ Module MainModule
         waitEvent.Set()
         abortThreads = True
         httpClient.Dispose()
+
+        Console.ForegroundColor = ConsoleColor.Cyan
+        Console.WriteLine()
+        If userExit Then
+            Console.WriteLine("User aborted...")
+        Else
+            Console.WriteLine("Process terminated successfully!")
+        End If
+        Console.WriteLine()
 
         Console.ForegroundColor = ConsoleColor.Gray
         Console.CursorVisible = True
