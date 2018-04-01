@@ -4,18 +4,25 @@ Imports HtmlAgilityPack
 
 Module MainModule
     ' \\Media-center\d\Emulators\mame\roms
-    Private Class ProgramSettings
+    Private Structure ProgramSettings
         Public Enum Modes
             Auto
             OnlyMissing
             All
         End Enum
         Public Property DestinationFolder As String
-        Public Property UserSections As New List(Of String)
+        Public Property UserSections As List(Of String)
         Public Property Filter As String
-        Public Property DownloadMode As Modes = Modes.Auto
-        Public Property MaximumConnections As Integer = 10
-    End Class
+        Public Property DownloadMode As Modes
+        Public Property MaximumConnections As Integer
+    End Structure
+
+    Private Structure ProgramCounters
+        Public Property Downloaded As Integer
+        Public Property Skipped As Integer
+        Public Property Invalid As Integer
+        Public Property Failed As Integer
+    End Structure
 
     Private files() As String
     Private dstFile As String
@@ -27,6 +34,7 @@ Module MainModule
     Private syncObj As New Object()
     Private abortThreads As Boolean
     Private settings As New ProgramSettings()
+    Private counters As New ProgramCounters()
 
     ' http://www.emuparadise.me/roms/get-download.php?gid=10944&token=fe1cbde50e0d9859193c2fbb06944a3c&mirror_available=true
     ' http://50.7.136.26/happyxhJ1ACmlTrxJQpol71nBc/MAME/roms/88games.zip
@@ -36,34 +44,45 @@ Module MainModule
 
     Sub Main(args() As String)
         Console.Title = "Download MAME ROMs"
+        Console.BackgroundColor = ConsoleColor.Black
+        Console.Clear()
 
         If args.Length < 1 Then
             ShowUsage()
         Else
-            For i As Integer = 0 To args.Length - 1 Step 2
-                Select Case args(i).ToLower()
-                    Case "/s"
-                        For k As Integer = 0 To args(i + 1).Length - 1
-                            settings.UserSections.Add(args(i + 1)(k))
-                        Next
-                    Case "/f"
-                        settings.Filter = args(i + 1).ToLower()
-                    Case "/d"
-                        settings.DestinationFolder = args(i + 1)
-                    Case "/r"
-                        Select Case args(i + 1).ToLower()
-                            Case "auto" : settings.DownloadMode = ProgramSettings.Modes.Auto
-                            Case "missing" : settings.DownloadMode = ProgramSettings.Modes.OnlyMissing
-                            Case "all" : settings.DownloadMode = ProgramSettings.Modes.All
-                        End Select
-                    Case "/c"
-                        Dim mc As Integer
-                        If Integer.TryParse(args(i + 1), mc) Then settings.MaximumConnections = mc
-                    Case Else
-                        ShowUsage($"Unknown command line option: '{args(i)}'")
-                        Exit Sub
-                End Select
-            Next
+            settings.UserSections = New List(Of String)
+            settings.MaximumConnections = 10
+            settings.DownloadMode = ProgramSettings.Modes.Auto
+
+            Try
+                For i As Integer = 0 To args.Length - 1 Step 2
+                    Select Case args(i).ToLower()
+                        Case "/s"
+                            For k As Integer = 0 To args(i + 1).Length - 1
+                                settings.UserSections.Add(args(i + 1)(k))
+                            Next
+                        Case "/f"
+                            settings.Filter = args(i + 1).ToLower()
+                        Case "/d"
+                            settings.DestinationFolder = args(i + 1)
+                        Case "/r"
+                            Select Case args(i + 1).ToLower()
+                                Case "auto" : settings.DownloadMode = ProgramSettings.Modes.Auto
+                                Case "missing" : settings.DownloadMode = ProgramSettings.Modes.OnlyMissing
+                                Case "all" : settings.DownloadMode = ProgramSettings.Modes.All
+                            End Select
+                        Case "/c"
+                            Dim mc As Integer
+                            If Integer.TryParse(args(i + 1), mc) Then settings.MaximumConnections = mc
+                        Case Else
+                            ShowUsage($"Unknown command line option: '{args(i)}'")
+                            Exit Sub
+                    End Select
+                Next
+            Catch ex As Exception
+                ShowUsage($"Unable to parse command line arguments: '{settings.DestinationFolder}'")
+                Exit Sub
+            End Try
 
             If Not IO.Directory.Exists(settings.DestinationFolder) Then
                 ShowUsage($"Invalid destination folder: '{settings.DestinationFolder}'")
@@ -231,6 +250,7 @@ Module MainModule
                             Console.ForegroundColor = ConsoleColor.Gray
                             Thread.Sleep(50)
                         End SyncLock
+                        counters.Skipped += 1
                     ElseIf rom.Size = 0 Then
                         SyncLock syncObj
                             Console.SetCursorPosition(0, 1)
@@ -239,6 +259,7 @@ Module MainModule
                             Console.ForegroundColor = ConsoleColor.Gray
                             Thread.Sleep(250)
                         End SyncLock
+                        counters.Invalid += 1
                     Else
                         sw.Restart()
                         httpClient.DownloadFile("http://50.7.161.234/998ajxYxajs13jAKhdca/MAME/roms/" + rom.DownloadURL + ".zip", dstFile)
@@ -264,6 +285,7 @@ Module MainModule
                         Thread.Sleep(1000)
                         ClearLines(2)
                     End SyncLock
+                    counters.Failed += 1
                 End Try
 
                 sw.Stop()
@@ -330,7 +352,7 @@ Module MainModule
                     Console.BackgroundColor = ConsoleColor.Black
                     For x As Integer = mw To s - 1
                         Console.CursorLeft = x + 20
-                        Console.Write(If(x  < currentROM.Title.Length, currentROM.Title.Substring(x, 1), " "))
+                        Console.Write(If(x < currentROM.Title.Length, currentROM.Title.Substring(x, 1), " "))
                     Next
                 End If
             Catch ex As Exception
@@ -420,18 +442,35 @@ Module MainModule
         abortThreads = True
         httpClient.Dispose()
 
-        Console.ForegroundColor = ConsoleColor.Cyan
-        Console.WriteLine()
-        If userExit Then
-            Console.WriteLine("User aborted...")
-        Else
-            Console.WriteLine("Process terminated successfully!")
-        End If
-        Console.WriteLine()
+        SyncLock syncObj
+            Console.ForegroundColor = ConsoleColor.Cyan
+            Console.WriteLine()
+            Console.WriteLine()
+            If userExit Then
+                Console.WriteLine("User aborted...")
+            Else
+                Console.WriteLine("Process terminated successfully!")
+            End If
+            Console.WriteLine()
 
-        Console.ForegroundColor = ConsoleColor.Gray
-        Console.CursorVisible = True
-        Console.WriteLine()
+            Console.ForegroundColor = ConsoleColor.DarkGreen
+            Console.WriteLine("Downloaded:")
+            Console.WriteLine("Skipped:")
+            Console.WriteLine("Invalid:")
+            Console.WriteLine("Failed:")
+
+            Console.ForegroundColor = ConsoleColor.Green
+            Console.CursorTop -= 4 : Console.CursorLeft = 13 : Console.Write(counters.Downloaded)
+            Console.CursorTop += 1 : Console.CursorLeft = 13 : Console.Write(counters.Skipped)
+            Console.CursorTop += 1 : Console.CursorLeft = 13 : Console.Write(counters.Invalid)
+            Console.CursorTop += 1 : Console.CursorLeft = 13 : Console.Write(counters.Failed)
+
+            Console.WriteLine()
+
+            Console.ForegroundColor = ConsoleColor.Gray
+            Console.CursorVisible = True
+            Console.WriteLine()
+        End SyncLock
 
         Environment.Exit(0)
     End Sub
