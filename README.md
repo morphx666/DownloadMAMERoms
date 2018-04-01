@@ -1,7 +1,7 @@
 # DownloadMAMERoms
 Downloader for MAME ROMS
 
-    ## Usage:
+    Usage:
      dmr [/s] [/f] [/r auto|missing|all] [/c] /d
 
      /s Sections: A sequence of letters and or numbers indicating the ROMs sections to scan
@@ -13,7 +13,7 @@ Downloader for MAME ROMS
             all:     Download all available ROMs
      /c Connections: Defines the maximum number of simultaneous connections for the scanning process
 
-    ## Examples:
+    Examples:
      1) Download all roms to c:\mame\roms
         dmr /d c:\mame\roms
 
@@ -23,5 +23,5 @@ Downloader for MAME ROMS
      3) Download all roms from section 'G', containing the word 'galaga' to c:\emulators\mame\roms
         dmr /s G /f galaga /d c:\emulators\mame\roms
 
-    ## Shortcut Keys:
+    Shortcut Keys:
      ESC: Abort process and terminate
